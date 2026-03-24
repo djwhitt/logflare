@@ -11,6 +11,7 @@ Logflare is a real-time log aggregation and analytics platform built with [Elixi
 - [Broadway Pipelines](#broadway-pipelines)
 - [Dynamic Pipeline Scaling](#dynamic-pipeline-scaling)
 - [Backpressure](#backpressure)
+  - [Delivery Guarantees Summary](#delivery-guarantees-summary)
 - [Supervision Tree](#supervision-tree)
 - [Query and Analytics Layer](#query-and-analytics-layer)
 - [Alerting](#alerting)
@@ -97,7 +98,8 @@ The primary ingestion path. The Phoenix router defines an `:api` pipeline with p
 - **JSON** / **NDJSON** — standard structured log payloads
 - **BERT** — Binary Erlang Term format for Erlang/Elixir clients
 - **Syslog** — RFC 5424 syslog messages
-- **Protobuf** — OpenTelemetry collector exports (traces, metrics, logs)
+
+OpenTelemetry Protobuf ingestion uses a separate `:otlp_api` pipeline (see [OpenTelemetry (OTLP)](#opentelemetry-otlp) below).
 
 Ingestion requests pass through a plug pipeline that handles auth, rate limiting, and buffer limiting:
 
@@ -142,7 +144,7 @@ The `Logflare.LogEvent` struct is the core data unit flowing through the system.
 | `body` | `map` | Event payload (user data) |
 | `event_type` | `:log \| :metric \| :trace` | Classified type |
 | `ingested_at` | `utc_datetime_usec` | Server ingestion time |
-| `source_uuid` | `Ecto.UUID` | Immutable source reference |
+| `source_uuid` | `Ecto.UUID.Atom` | Immutable source reference |
 | `via_rule_id` | `id` | Rule that routed this event |
 | `retries` | `integer` | Retry counter for failed inserts |
 | `pipeline_error` | `embedded_schema` | Error tracking (stage, type, message) |
@@ -152,13 +154,13 @@ The `Logflare.LogEvent` struct is the core data unit flowing through the system.
 `LogEvent.make/2` runs through these stages for each incoming event:
 
 1. **Mapping** — apply data transformations from source config
-2. **Validation** — structural and content validation
+2. **Type Detection** — classify as `:log`, `:metric`, or `:trace` (during struct construction)
 3. **Transformation** — field enrichment (copy fields, KV enrichment)
-4. **Type Detection** — classify as `:log`, `:metric`, or `:trace`
+4. **Validation** — structural and content validation
 
 ### Type Detection
 
-`Logflare.Logs.LogEvent.TypeDetection` classifies events using a two-pass strategy:
+`Logflare.LogEvent.TypeDetection` classifies events using a two-pass strategy:
 
 1. **Explicit metadata** — if `metadata.type` is set (e.g., by OTEL processors), use it directly
 2. **Heuristic detection** — inspect body keys:
@@ -202,12 +204,15 @@ Backends are pluggable storage destinations implemented as adaptors. The `Logfla
 | `consolidated_ingest?/0` | Single pipeline per backend (all sources share batch) |
 | `test_connection/1` | Connectivity check |
 | `send_alert/3` | Send alert notifications |
+| `transform_config/1` | Transform backend config before use |
+| `supports_default_ingest?/0` | Whether backend participates in the default ingest path |
+| `redact_config/1` | Redact sensitive config fields for display |
 
 ### Available Adaptors
 
 | Adaptor | Type | Protocol | Notes |
 |---------|------|----------|-------|
-| **BigQuery** | Database | gRPC (Storage Write API) | Arrow IPC serialization via Rust NIF |
+| **BigQuery** | Database | gRPC (Storage Write API) | Arrow IPC serialization via Rust NIF. The adaptor wraps the older per-source `Sources.Source.BigQuery.Pipeline` and `Schema` modules inside a `DynamicPipeline` supervisor |
 | **ClickHouse** | Database | Native TCP / HTTP | LZ4 compression via Rust NIF; consolidated ingestion |
 | **PostgreSQL** | Database | PostgreSQL wire protocol | Via [Postgrex](https://hexdocs.pm/postgrex/) |
 | **Elasticsearch** | Search engine | HTTP | |
@@ -216,12 +221,11 @@ Backends are pluggable storage destinations implemented as adaptors. The `Logfla
 | **S3** | Object storage | HTTP | Byte-based batch splitting |
 | **Axiom** | SaaS | HTTP | |
 | **Webhook** | HTTP | HTTP | Generic outbound webhook |
-| **Slack** | Messaging | HTTP | Slack incoming webhooks |
 | **Sentry** | Error tracking | HTTP | |
 | **Incident.io** | Incident management | HTTP | |
 | **Last9** | Observability | HTTP | |
 | **Syslog** | Protocol | TCP/UDP | RFC 5424 |
-| **OTLP** | Protocol | HTTP/gRPC | OpenTelemetry export |
+| **OTLP** | Protocol | HTTP/Protobuf | OpenTelemetry export (gRPC not yet enabled) |
 
 HTTP-based adaptors share a common pipeline implementation (`lib/logflare/backends/adaptor/http_based/pipeline.ex`).
 
@@ -237,6 +241,36 @@ flowchart LR
     Source --> R3["Rule 3"] --> B3["S3 Backend"]
 ```
 
+### Routing Semantics
+
+When `Backends.ingest_logs/3` is called (with `backend = nil` for standard ingestion), events are dispatched through three routing paths:
+
+```mermaid
+flowchart TB
+    IL["ingest_logs(events, source, nil)"] --> BC["maybe_broadcast_and_route"]
+    IL --> DD["dispatch_to_backends"]
+
+    BC --> SR["SourceRouter.route_to_sinks_and_ingest"]
+    SR --> RT["RulesTree.matching_rules"]
+    RT -->|"per matching rule"| RI["ingest_logs(event, source, rule_backend)"]
+
+    DD --> SYS["System default<br/>{source_id, nil}"]
+    DD --> LB["list_backends(source_id:)"]
+    LB --> UB["User backends<br/>{source_id, backend_id}"]
+    LB --> CB["Consolidated backends<br/>{:consolidated, backend_id}"]
+
+    SYS --> IEQ["IngestEventQueue"]
+    UB --> IEQ
+    CB --> IEQ
+    RI --> IEQ
+```
+
+**1. System default** (`{source_id, nil}`) — every ingest always queues events to the nil-backend queue. This is consumed by the system default backend (BigQuery in SaaS, configurable in single-tenant via `LOGFLARE_SINGLE_TENANT_BACKEND_TYPE`).
+
+**2. User-configured backends** (`{source_id, backend_id}`) — `Backends.Cache.list_backends(source_id:)` returns all backends associated with the source via the `sources_backends` join table. This includes backends with `default_ingest?: true`, which are automatically associated with all sources that have `default_ingest_backend_enabled?` set. Consolidated backends in this list use `{:consolidated, backend_id}` queue keys instead.
+
+**3. Rule fan-out** — `SourceRouter.route_to_sinks_and_ingest/2` evaluates each event against the source's rules via `RulesTree`. For each matching rule with a `backend_id`, it calls `ingest_logs/3` with that specific backend. Rule-routed events get `via_rule_id` set to prevent re-evaluation.
+
 ---
 
 ## Broadway Pipelines
@@ -248,9 +282,11 @@ flowchart LR
 | Pipeline | Adaptor | Batch Size | Processors | Batchers | Pattern |
 |----------|---------|-----------|------------|----------|---------|
 | `ClickHouseAdaptor.Pipeline` | ClickHouse | 50,000 | 4 | 2 | Consolidated |
+| `BigQuery.Pipeline` | BigQuery | 500 (6MB cap) | adaptor-configured | adaptor-configured | Per-source (DynamicPipeline) |
 | `HttpBased.Pipeline` | Datadog, Elastic, Webhook, etc. | 250 | 3 | 6 | Per-source |
 | `PostgresAdaptor.Pipeline` | PostgreSQL | 350 | 5 | 5 | Per-source |
 | `S3Adaptor.Pipeline` | S3 | Byte-based | 5 | 1 | Per-source |
+| `SyslogAdaptor.Pipeline` | Syslog | 50 | 1 | 1 | Per-source |
 
 ### Data Flow Through Broadway
 
@@ -369,7 +405,7 @@ flowchart TB
 
 The `Coordinator` periodically calls a `resolve_count` function that inspects `IngestEventQueue.list_pending_counts/1`. If queue depth exceeds thresholds, shards are added (up to `System.schedulers_online()`). If idle, shards are removed. Rate limiting prevents thrashing.
 
-Currently used by the ClickHouse consolidated pipeline.
+Currently used by the ClickHouse consolidated pipeline and the BigQuery adaptor.
 
 ---
 
@@ -429,11 +465,15 @@ Two plugs in the `:require_ingest_api_auth` pipeline gate requests before any qu
 
 **RateLimiter** (`plugs/rate_limiter.ex`) — checks user-level and per-source API quotas derived from the billing plan via `Users.API.verify_api_rates_quotas/1`. Returns **HTTP 429** with `X-Rate-Limit` headers when quotas are exceeded. This is purely rate-based and independent of backend health.
 
-**BufferLimiter** (`plugs/buffer_limiter.ex`) — calls `Backends.cached_local_pending_buffer_full?/1`, which reads cached queue depths from `PubSubRates.Cache`. Returns **HTTP 429 "Buffer Full"** when **all** queues for the source's backends exceed 30,000 events (strict `>`, so exactly 30,000 is not considered full). This is the mechanism by which downstream congestion surfaces to clients.
+**BufferLimiter** (`plugs/buffer_limiter.ex`) — calls `Backends.cached_local_pending_buffer_full?/1`, which reads cached queue depths from `PubSubRates.Cache`. Returns **HTTP 429 "Buffer Full"** when the checked queues exceed 30,000 events (strict `>`, so exactly 30,000 is not considered full). This is the mechanism by which downstream congestion surfaces to clients.
+
+The check follows two paths depending on source configuration:
+- **Regular sources:** checks only the system default queue `{source_id, nil}`
+- **Sources with `default_ingest_backend_enabled?`:** checks `{source_id, nil}` OR any user-configured default backend queues (`{source_id, backend_id}` for backends with `default_ingest?: true`). Returns full only when `{source_id, nil}` is full AND all user default backends are also full.
 
 The buffer fullness check uses **total queue size** (both `:pending` and `:ingested` events), not just pending count. This means uncleaned `:ingested` events (from non-consolidated pipelines with no-op ack callbacks) contribute to the fullness threshold.
 
-**Limitation: consolidated backends are not checked.** `BufferCacheWorker` caches consolidated queue stats under the key `{:consolidated, backend_id, "buffers"}`, but `buffer_full_for_backend?/2` queries with `{source_id, backend_id, "buffers"}` — a different key. The BufferLimiter therefore never sees consolidated queue depths (currently only ClickHouse). If the system default backend (queued at `{source_id, nil}`) is draining normally but the consolidated ClickHouse queue is overflowing, no 429 is returned.
+**Limitation: consolidated backends are not checked.** `BufferCacheWorker` iterates only `{source_id, backend_id}` tuples from the ETS mapper table — it never caches consolidated queue depths at all. The BufferLimiter therefore never sees consolidated queue depths (currently only ClickHouse). If the system default backend (queued at `{source_id, nil}`) is draining normally but the consolidated ClickHouse queue is overflowing, no 429 is returned.
 
 ### Layer 2: Queue Buffering (IngestEventQueue)
 
@@ -570,12 +610,32 @@ When a backend slows down or becomes unavailable, pressure propagates upward thr
 ### Design Trade-offs and Known Gaps
 
 - **No end-to-end acknowledgment** — once a client receives HTTP 200, the event may still be lost at GenStage overflow, backend exhaustion, or via no-op ack cleanup. Clients are not notified of post-acceptance data loss.
-- **Consolidated queues bypass BufferLimiter** — the `BufferCacheWorker` caches consolidated queue stats under `{:consolidated, backend_id}` keys, but `buffer_full_for_backend?` queries with `{source_id, backend_id}` keys. This means ClickHouse queue overflow cannot trigger HTTP 429 responses. Only the rate-based `RateLimiter` provides HTTP-level protection for consolidated backends.
+- **Consolidated queues bypass BufferLimiter** — `BufferCacheWorker` only iterates `{source_id, backend_id}` tuples from the ETS mapper table and never caches consolidated queue depths. This means ClickHouse queue overflow cannot trigger HTTP 429 responses. Only the rate-based `RateLimiter` provides HTTP-level protection for consolidated backends.
 - **Startup queue is unbounded** — no component enforces a size limit on the startup queue. `QueueJanitor` explicitly skips it (`pid != nil` guard). In sustained overload where all active queues are full, the startup queue grows without limit, posing a memory exhaustion risk.
 - **No QueueJanitor for consolidated backends** — the janitor is only started by `AdaptorSupervisor` (per-source pipelines). ClickHouse relies on `pop_pending` (atomic removal) for cleanup, but has no safety valve for excess `:pending` events if the pipeline can't keep up.
 - **Silent data loss on failure (HTTP, Postgres, S3)** — the no-op ack callbacks mean failed events are treated identically to successful ones. `QueueJanitor` cleans them up as `:ingested` without logging the failure.
 - **Local-node buffer checks** — `BufferLimiter` inspects only the local node's queue depths. In a cluster, total capacity before rejection is `30K x nodes x queues_per_node` for non-consolidated backends.
 - **No circuit breaker** — the system has no mechanism to stop sending to a consistently failing backend. ClickHouse events are dropped on every failure; HTTP/Postgres events are silently lost. There is no exponential backoff, failure threshold, or open/half-open/closed state machine.
+
+### Delivery Guarantees Summary
+
+The system provides **at-most-once delivery** for all backends. Once a client receives HTTP 200, no further delivery guarantee exists.
+
+| Backend | Retry on Failure? | Max Retries | Loss Mode |
+|---------|-------------------|-------------|-----------|
+| ClickHouse | No (`@max_retries = 0`) | 0 | Immediate drop, logged |
+| Syslog | Yes (requeue) | 1 | Drop after retry, logged |
+| HTTP-based (Datadog, Elastic, etc.) | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
+| PostgreSQL | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
+| S3 | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
+| BigQuery | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
+
+"Silent" loss means the pipeline marks events as `:ingested` but the ack callback is a no-op, so failed batches are never retried. `QueueJanitor` eventually truncates `:ingested` events regardless of whether they were successfully delivered.
+
+Additional loss points that apply to all backends:
+- **GenStage buffer overflow** — if the internal 10K buffer fills before downstream demand resumes, events are discarded (logged as warning)
+- **QueueJanitor hard drop** — if queue size exceeds 36K (standard) or 360K (consolidated), 5% of `:pending` events are dropped
+- **Startup queue growth** — unbounded, posing memory exhaustion risk under sustained overload
 
 ---
 
@@ -643,9 +703,11 @@ flowchart TB
     App --> Counters
     App --> Rate
     App --> PSR
-    App --> IEQ
-    App --> ConsolidatedSup
-    App --> PartitionSupervisor
+    App --> Backends["Logflare.Backends"]
+    Backends --> IEQ
+    Backends --> ConsolidatedSup
+    Backends --> PartitionSupervisor
+    App --> SourceSup["Source.Supervisor"]
     App --> Endpoint
     App --> GRPC
     App --> SysMet
@@ -800,7 +862,7 @@ The web layer uses [Phoenix](https://www.phoenixframework.org/) with [LiveView](
 | Pipeline | Purpose | Auth |
 |----------|---------|------|
 | `:browser` | Dashboard UI (LiveView) | Session-based, team/plan context |
-| `:api` | REST API (JSON/BERT) | API key via `VerifyApiAccess` |
+| `:api` | REST API (JSON/BERT) | None (auth added by composing with `:require_*` pipelines) |
 | `:otlp_api` | OTLP ingestion (Protobuf) | API key |
 | `:require_ingest_api_auth` | Log ingestion | API key + rate limiting + buffer limiting |
 | `:require_mgmt_api_auth` | Management API | Private-scoped API key |
