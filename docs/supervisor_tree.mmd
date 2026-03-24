@@ -1,0 +1,113 @@
+graph TD
+    Root["Logflare.Supervisor<br/><i>one_for_one</i>"]
+
+    %% ── Networking / Finch pools ──
+    Root --> FinchPools["Finch Pools<br/><i>from Networking.pools/0</i>"]
+    FinchPools --> FinchGoth["Finch :FinchGoth"]
+    FinchPools --> FinchHttp1["Finch :FinchDefaultHttp1"]
+    FinchPools --> FinchGoogleApi["Finch :GoogleApiClient"]
+    FinchPools --> FinchIngest["Finch :FinchIngest"]
+    FinchPools --> FinchQuery["Finch :FinchQuery"]
+    FinchPools --> FinchDefault["Finch :FinchDefault"]
+    FinchPools --> FinchCH["Finch :FinchClickHouseIngest"]
+
+    %% ── Conditional children ──
+    Root --> Cond["Conditional"]
+    Cond -.-> Goth["PartitionSupervisor :Goth<br/><i>if BigQuery configured</i>"]
+    Cond -.-> ConfigCatCache["ConfigCatCache<br/><i>if config_cat_sdk_key</i>"]
+    Cond -.-> ConfigCat["ConfigCat<br/><i>if config_cat_sdk_key</i>"]
+    Cond -.-> OtelExporter["OTel Exporter<br/><i>from UserMonitoring</i>"]
+
+    %% ── Core infrastructure ──
+    Root --> ErlSysMon["ErlSysMon"]
+    Root --> TaskSups["PartitionSupervisor<br/>:Logflare.TaskSupervisors<br/><i>child: Task.Supervisor</i>"]
+    Root --> ClusterSup["Cluster.Supervisor<br/>:Logflare.ClusterSupervisor"]
+    Root --> Repo["Logflare.Repo"]
+    Root --> Vault["Logflare.Vault"]
+    Root --> Oban["Oban"]
+    Root --> PubSub["Phoenix.PubSub<br/>:Logflare.PubSub"]
+
+    %% ── ContextCache.Supervisor ──
+    Root --> CCSup["ContextCache.Supervisor<br/><i>one_for_one</i>"]
+    CCSup --> Caches["Cachex Caches<br/><i>TeamUsers, Partners, Users,<br/>Backends, Sources, Billing,<br/>SourceSchemas, Auth, Endpoints,<br/>Rules, KeyValues, SavedSearches</i>"]
+    CCSup --> TxBroadcaster["TransactionBroadcaster"]
+    CCSup --> GenSingleton["GenSingleton<br/><i>wraps Cainophile.Adapters.Postgres</i>"]
+    CCSup --> CBWorkerSup["CacheBusterWorker Supervisor"]
+    CCSup --> CacheBuster["CacheBuster"]
+
+    %% ── Caches & counters ──
+    Root --> LogEventsCache["Logs.LogEvents.Cache"]
+    Root --> PSRates["PubSubRates<br/><i>one_for_one</i>"]
+    PSRates --> PSRatesCache["PubSubRates.Cache"]
+    Root --> RejectedLogEvents["Logs.RejectedLogEvents"]
+    Root --> Counters["Sources.Counters"]
+    Root --> RateCounters["Sources.RateCounters"]
+
+    %% ── Backends.Supervisor ──
+    Root --> BackendsSup["Backends.Supervisor<br/><i>one_for_one</i>"]
+    BackendsSup --> IEQ["IngestEventQueue"]
+    BackendsSup --> BufferCache["IngestEventQueue.BufferCacheWorker"]
+    BackendsSup --> MapperJanitor["IngestEventQueue.MapperJanitor"]
+
+    BackendsSup --> PgSup["PostgresAdaptor.Supervisor<br/><i>one_for_one</i>"]
+    PgSup --> PgRepos["DynamicSupervisor :Repos<br/><i>dynamic Ecto repos</i>"]
+
+    BackendsSup --> MappingConfigStore["CH MappingConfigStore"]
+    BackendsSup --> NativeSchemaCache["CH NativeIngester.SchemaCache"]
+
+    BackendsSup --> PoolSup["CH NativeIngester.PoolSup<br/><i>one_for_one</i>"]
+    PoolSup --> PoolDynSup["DynamicSupervisor<br/><i>Pool instances</i>"]
+    PoolSup --> ManagerDynSup["DynamicSupervisor<br/><i>PoolManager instances</i>"]
+
+    BackendsSup --> QueryConnSup["CH QueryConnectionSup<br/><i>one_for_one</i>"]
+    QueryConnSup --> QueryDynSup["DynamicSupervisor<br/><i>ConnectionManager instances</i>"]
+
+    BackendsSup --> ConsolidatedSup["ConsolidatedSup<br/><i>one_for_one</i>"]
+    ConsolidatedSup --> ConsDynSup["DynamicSupervisor<br/><i>consolidated pipelines</i>"]
+    ConsolidatedSup --> ConsWorker["ConsolidatedSupWorker<br/><i>reconciliation</i>"]
+
+    BackendsSup --> SourcesSup["PartitionSupervisor<br/>:Backends.SourcesSup<br/><i>child: DynamicSupervisor</i>"]
+    BackendsSup --> SourceRegistry["Registry :SourceRegistry"]
+    BackendsSup --> BackendRegistry["Registry :BackendRegistry"]
+
+    %% ── Dynamic per-source tree ──
+    SourcesSup -.->|"dynamic"| SourceSup["SourceSup<br/><i>per source, one_for_one</i>"]
+    SourceSup --> RateCounterServer["RateCounterServer"]
+    SourceSup --> RecentInserts["RecentInsertsCacher"]
+    SourceSup --> EmailNotif["EmailNotificationServer"]
+    SourceSup --> TextNotif["TextNotificationServer"]
+    SourceSup --> WebhookNotif["WebhookNotificationServer"]
+    SourceSup --> SlackHook["SlackHookServer"]
+    SourceSup --> BillingWriter["BillingWriter"]
+    SourceSup --> SourceSupWorker["SourceSupWorker"]
+    SourceSup -.->|"per backend"| AdaptorChild["Backend Adaptor<br/><i>non-consolidated only</i>"]
+
+    %% ── Source management & web ──
+    Root --> SourceSupervisor["Sources.Source.Supervisor<br/><i>GenServer, manages source lifecycle</i>"]
+    Root --> WebEndpoint["LogflareWeb.Endpoint"]
+    Root --> GRPCSup["GRPC.Server.Supervisor<br/><i>LogflareGrpc.Endpoint</i>"]
+
+    %% ── Metrics & telemetry ──
+    Root --> SysMet["SystemMetricsSup<br/><i>one_for_one</i>"]
+    SysMet --> AllLogsLogged["AllLogsLogged"]
+    SysMet --> AllLogsLoggedPoller["AllLogsLogged.Poller"]
+    SysMet --> TelPoller[":telemetry_poller<br/><i>Observer, Cluster, Schedulers, Finch</i>"]
+    Root --> Telemetry["Logflare.Telemetry"]
+
+    %% ── Endpoints & startup ──
+    Root --> EndpointsPSup["PartitionSupervisor<br/>:Endpoints.ResultsCache<br/><i>child: DynamicSupervisor</i>"]
+    Root --> StartupTask["Task<br/><i>startup_tasks/0</i>"]
+    Root --> ActiveUserTracker["ActiveUserTracker"]
+
+    %% ── Styling ──
+    classDef supervisor fill:#4a90d9,stroke:#2c5f8a,color:#fff
+    classDef dynamic fill:#6bb86b,stroke:#3d7a3d,color:#fff
+    classDef worker fill:#f5f5f5,stroke:#999,color:#333
+    classDef conditional fill:#f0ad4e,stroke:#c77c25,color:#fff
+    classDef registry fill:#d9534f,stroke:#a94442,color:#fff
+
+    class Root,CCSup,PSRates,BackendsSup,PgSup,PoolSup,QueryConnSup,ConsolidatedSup,SysMet supervisor
+    class SourcesSup,SourceSup,ConsDynSup,PgRepos,PoolDynSup,ManagerDynSup,QueryDynSup,TaskSups,EndpointsPSup dynamic
+    class SourceRegistry,BackendRegistry registry
+    class Cond,Goth,ConfigCat,ConfigCatCache,OtelExporter conditional
+    class AdaptorChild dynamic
