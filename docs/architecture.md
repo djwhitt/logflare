@@ -10,6 +10,7 @@ Logflare is a real-time log aggregation and analytics platform built with [Elixi
 - [Backend System](#backend-system)
 - [Broadway Pipelines](#broadway-pipelines)
 - [Dynamic Pipeline Scaling](#dynamic-pipeline-scaling)
+- [Backpressure](#backpressure)
 - [Supervision Tree](#supervision-tree)
 - [Query and Analytics Layer](#query-and-analytics-layer)
 - [Alerting](#alerting)
@@ -369,6 +370,113 @@ flowchart TB
 The `Coordinator` periodically calls a `resolve_count` function that inspects `IngestEventQueue.list_pending_counts/1`. If queue depth exceeds thresholds, shards are added (up to `System.schedulers_online()`). If idle, shards are removed. Rate limiting prevents thrashing.
 
 Currently used by the ClickHouse consolidated pipeline.
+
+---
+
+## Backpressure
+
+Backpressure propagates across four layers, from backend storage all the way back to HTTP clients. The system favors graceful degradation — absorbing and buffering aggressively before rejecting inbound requests.
+
+```mermaid
+flowchart TB
+    subgraph "Layer 1: HTTP Request Rejection"
+        RL["RateLimiter Plug<br/>(quota-based)"]
+        BL["BufferLimiter Plug<br/>(queue-depth-based)"]
+    end
+
+    subgraph "Layer 2: Queue Absorption"
+        IEQ["IngestEventQueue<br/>(30K per queue, smart redistribution)"]
+    end
+
+    subgraph "Layer 3: GenStage / Broadway Throttling"
+        BP["BufferProducer<br/>(10K internal buffer)"]
+        PR["Broadway Processors<br/>(demand-driven pulls)"]
+        BA["Broadway Batchers<br/>(bounded concurrency)"]
+    end
+
+    subgraph "Layer 4: Backend Retry & Exhaustion"
+        BE["Backend Insert"]
+        RETRY["Retry (requeue)"]
+        DROP["Drop (exhausted)"]
+    end
+
+    RL -->|"pass"| BL
+    RL -->|"429 Too Many Requests"| CLIENT["HTTP Client"]
+    BL -->|"pass"| IEQ
+    BL -->|"429 Buffer Full"| CLIENT
+    IEQ --> BP --> PR --> BA --> BE
+    BE -->|"failure"| RETRY --> IEQ
+    BE -->|"retries exhausted"| DROP
+
+    style CLIENT fill:#f96
+    style DROP fill:#f96
+```
+
+### Layer 1: HTTP Request Rejection
+
+Two plugs in the `:require_ingest_api_auth` pipeline gate requests before any queuing occurs:
+
+**RateLimiter** — checks user-level and per-source API quotas derived from the billing plan. Returns **HTTP 429** with `X-Rate-Limit` headers when quotas are exceeded. This is purely rate-based and independent of backend health.
+
+**BufferLimiter** — calls `Backends.cached_local_pending_buffer_full?/1`, which reads cached queue depths from `PubSubRates.Cache`. Returns **HTTP 429 "Buffer Full"** when **all** queues for the source's backends exceed 30,000 events. This is the mechanism by which downstream congestion surfaces to clients.
+
+### Layer 2: Queue Absorption and Redistribution
+
+Once past the HTTP plugs, events enter `IngestEventQueue.add_to_table/2`. This layer **never rejects** — it always returns `:ok`. Instead, it applies smart distribution:
+
+- Events are distributed round-robin across available per-producer queues
+- **Full queues are skipped** (> 30K events) and events are redirected to less-full queues
+- If all active queues are full, events fall back to the startup queue (`nil` pid) for later reprocessing
+- No backpressure signal is sent upstream — this layer silently absorbs what it can
+
+### Layer 3: GenStage Demand and Broadway Throttling
+
+**BufferProducer** is a [GenStage](https://hexdocs.pm/gen_stage/) producer with an internal buffer of 10,000 events. It only fetches from `IngestEventQueue` when downstream Broadway processors signal demand via GenStage's demand-driven flow control. When demand stops:
+
+- The producer stops polling the queue
+- If the internal 10K buffer fills before demand resumes, events are **silently dropped** (logged via `format_discarded/2`)
+- This is the first point where data loss can occur without the client being aware
+
+Broadway pipelines apply further throttling through their configuration:
+
+| Pipeline | Processor Concurrency | min_demand | Batch Size | Batcher Concurrency |
+|----------|----------------------|------------|------------|-------------------|
+| ClickHouse | 4 | 1 | 50,000 | 2 |
+| HTTP-based | 3 | 1 | 250 | 6 |
+| PostgreSQL | 5 | — | 350 | 5 |
+
+Low `min_demand` values mean processors pull conservatively from the producer, letting batchers accumulate events. Batcher concurrency caps how many backend writes happen in parallel. When batchers and processors are all busy, demand to the producer drops to zero, stalling the pipeline until capacity frees up.
+
+### Layer 4: Backend Retry and Exhaustion
+
+When backend inserts fail, the Broadway acknowledger decides what happens next:
+
+| Backend | Retries | Behavior |
+|---------|---------|----------|
+| ClickHouse (NativeIngester) | 1 | Retries once after 500ms for connection/timeout errors; drops on exhaustion |
+| ClickHouse (Pipeline) | 0 | No pipeline-level retry; exhausted events are dropped and logged |
+| Syslog | 1 | Re-queues once with incremented retry counter; drops on exhaustion |
+| HTTP-based | 0 | Failed batches are dropped (retry not yet implemented) |
+
+Re-queued events go back into `IngestEventQueue` with an incremented retry counter. Exhausted events (retries >= max) are permanently dropped and logged.
+
+### Pressure Cascade
+
+When a backend slows down or becomes unavailable, pressure propagates upward:
+
+1. Backend inserts slow → Broadway batcher/processor slots saturate
+2. Broadway demand drops → BufferProducer stops pulling from IngestEventQueue
+3. IngestEventQueue depths grow toward 30K per queue
+4. `PubSubRates.Cache` reflects growing buffer depths
+5. BufferLimiter plug starts returning **429 Buffer Full** to HTTP clients
+
+`DynamicPipeline` acts as an adaptive relief valve in this cascade — the Coordinator detects growing queue depths and scales Broadway shards up (to `System.schedulers_online()`), increasing throughput before the 429 threshold is reached.
+
+### Design Trade-offs
+
+- **No end-to-end acknowledgment** — once a client receives HTTP 200, the event may still be dropped at GenStage overflow or backend exhaustion. Clients are not notified of post-acceptance data loss.
+- **Local-node buffer checks** — `BufferLimiter` inspects only the local node's queue depths. In a cluster, total capacity before rejection is `30K x nodes x queues_per_node`.
+- **Silent drops at GenStage** — the 10K internal buffer is a safety valve, but overflow is only logged, not signaled upstream.
 
 ---
 
