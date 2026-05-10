@@ -17,4 +17,4 @@ Simplified deployment with:
 - Auto-seeded default user and plan
 - Optional **Supabase mode** — creates predefined sources and endpoints for Supabase log routing
 - Optional PostgreSQL-only backend (no BigQuery dependency)
-- Controlled via `Logflare.SingleTenant.single_tenant?/0`
+- Controlled via {{ mod("Logflare.SingleTenant.single_tenant?/0") }}
