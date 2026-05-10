@@ -1,6 +1,6 @@
 [tools]
 python = "3.12"
-"pipx:mkdocs-material" = { version = "latest", pipx_args = "--include-deps" }
+"pipx:mkdocs" = { version = "latest", pipx_args = "--preinstall mkdocs-material" }
 
 [tasks.sync-upstream]
 description = "Add upstream remote if missing, fetch it, and rebase current branch onto upstream/main"
