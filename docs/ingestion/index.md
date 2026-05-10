@@ -39,4 +39,4 @@ Dedicated OTLP endpoints accept [OpenTelemetry](https://opentelemetry.io/) proto
 - `ExportMetricsServiceRequest` — metrics
 - `ExportLogsServiceRequest` — logs
 
-These are decoded and converted into `LogEvent` structs via modules in `lib/logflare/logs/` (`otel_log.ex`, `otel_metric.ex`, `otel_trace.ex`).
+These are decoded and converted into `LogEvent` structs via modules in {{ src("lib/logflare/logs/") }}: {{ src("lib/logflare/logs/otel_log.ex") }}, {{ src("lib/logflare/logs/otel_metric.ex") }}, {{ src("lib/logflare/logs/otel_trace.ex") }}.
