@@ -17,5 +17,5 @@ description = "Run MkDocs dev server at http://127.0.0.1:8000"
 run = "mkdocs serve"
 
 [tasks."docs:build"]
-description = "Build static docs site to ./site/"
-run = "mkdocs build"
+description = "Build static docs site to ./site/ (fails on warnings)"
+run = "mkdocs build --strict"
