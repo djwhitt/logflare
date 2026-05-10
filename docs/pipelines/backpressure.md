@@ -26,8 +26,7 @@ flowchart TB
 
     subgraph "Layer 5: Backend Ack"
         BE["Backend Insert"]
-        RETRY["Retry (requeue)"]
-        DROP["Drop (exhausted)"]
+        DROP["Drop (logged)"]
         SILENT["Silent loss<br/>(no-op ack)"]
     end
 
@@ -39,9 +38,8 @@ flowchart TB
     QJ -.->|"truncate :ingested<br/>drop excess :pending"| AQ
     AQ --> BP --> PR --> BA --> BE
     SQ -->|"producer restart"| AQ
-    BE -->|"failure (Syslog)"| RETRY --> AQ
-    BE -->|"retries exhausted<br/>(ClickHouse, Syslog)"| DROP
-    BE -->|"failure (HTTP, PG, S3)"| SILENT
+    BE -->|"failure (ClickHouse)"| DROP
+    BE -->|"failure (HTTP, PG, S3, Syslog)"| SILENT
 
     style CLIENT fill:#f96
     style DROP fill:#f96
@@ -59,12 +57,12 @@ Two plugs in the `:require_ingest_api_auth` pipeline gate requests before any qu
 The check follows two paths depending on source configuration:
 
 - **Regular sources:** checks only the system default queue `{source_id, nil}`
-- **Sources with `default_ingest_backend_enabled?`:** checks `{source_id, nil}` OR any user-configured default backend queues (`{source_id, backend_id}` for backends with `default_ingest?: true`). Returns full only when `{source_id, nil}` is full AND all user default backends are also full.
+- **Sources with `default_ingest_backend_enabled?`:** checks `{source_id, nil}` and every user-configured default backend queue (`{source_id, backend_id}` for backends with `default_ingest?: true`). Returns full as soon as **any** of those checks reports full (the system default OR any user default).
 
-The buffer fullness check uses **total queue size** (both `:pending` and `:ingested` events), not just pending count. This means uncleaned `:ingested` events (from non-consolidated pipelines with no-op ack callbacks) contribute to the fullness threshold.
+For each individual backend, "full" means **all per-producer queues for that backend are full** — `buffer_full_for_backend?/2` uses `Enum.all?` over the cached queue list. The fullness check uses **total queue size** (both `:pending` and `:ingested` events), not just pending count, so uncleaned `:ingested` events (from non-consolidated pipelines with no-op ack callbacks) count toward the threshold.
 
-!!! warning "Limitation: consolidated backends are not checked"
-    `BufferCacheWorker` iterates only `{source_id, backend_id}` tuples from the ETS mapper table — it never caches consolidated queue depths at all. The BufferLimiter therefore never sees consolidated queue depths (currently only ClickHouse). If the system default backend (queued at `{source_id, nil}`) is draining normally but the consolidated ClickHouse queue is overflowing, no 429 is returned.
+!!! warning "Limitation: consolidated backends aren't checked"
+    `BufferCacheWorker` does cache consolidated queue depths — its `:ets.foldl` over the mapper table matches `{:consolidated, backend_id}` keys the same way it matches `{source_id, backend_id}` keys, and caches them via `cache_local_buffer_lens(:consolidated, backend_id)`. The gap is in `BufferLimiter`: `buffer_full_for_backend?/2` only ever queries with the source's integer `source_id`, never with the `:consolidated` atom, so those cached consolidated depths are never read. If the system default backend is draining normally but the consolidated ClickHouse queue is overflowing, no 429 is returned.
 
 ## Layer 2: Queue Buffering (IngestEventQueue)
 
@@ -150,24 +148,19 @@ After Broadway processes a batch, the acknowledger determines what happens to ev
 - On failure: **all failed events are dropped immediately** (logged as warning). Since `@max_retries = 0`, every failure is treated as exhaustion. Events are deleted from the queue (no-op since already popped) and permanently lost
 - The `NativeIngester` layer below the pipeline has its own retry logic (1 retry with 500ms delay for connection/timeout errors), but pipeline-level ack sees only the final result
 
-**Syslog** (`@max_retries = 1`):
+**HTTP-based, PostgreSQL, S3, Syslog** (no-op ack):
 
-- On failure (first attempt): events are deleted from queue and re-added as fresh `:pending` entries with `retries` incremented. This gives them one more chance through the pipeline
-- On failure (second attempt): events are deleted and permanently dropped (logged as warning)
-
-**HTTP-based, PostgreSQL, S3** (no-op ack):
-
-- The `ack/3` callback is a no-op (`# TODO: re-queue failed`)
+- The `ack/3` callback is a no-op
 - On success: events remain in ETS with `:ingested` status. `QueueJanitor` eventually truncates them
 - On failure: **events are silently lost**. They were marked `:ingested` before processing (in `BufferProducer.do_fetch/2`), the no-op ack doesn't revert them, and `QueueJanitor` cleans them up as if they succeeded. No retry occurs, no error is logged at the ack layer
 
 | Adaptor | Failure Handling | Data Loss on Failure? |
 |---------|-----------------|----------------------|
 | ClickHouse | Explicit drop, logged | Yes (immediate, logged) |
-| Syslog | 1 retry, then drop | Yes (after 1 retry, logged) |
 | HTTP-based | No-op ack | Yes (silent, cleaned by QueueJanitor) |
 | PostgreSQL | No-op ack | Yes (silent, cleaned by QueueJanitor) |
 | S3 | No-op ack | Yes (silent, cleaned by QueueJanitor) |
+| Syslog | No-op ack | Yes (silent, cleaned by QueueJanitor) |
 
 ## Pressure Cascade
 
@@ -222,10 +215,10 @@ The system provides **at-most-once delivery** for all backends. Once a client re
 | Backend | Retry on Failure? | Max Retries | Loss Mode |
 |---------|-------------------|-------------|-----------|
 | ClickHouse | No (`@max_retries = 0`) | 0 | Immediate drop, logged |
-| Syslog | Yes (requeue) | 1 | Drop after retry, logged |
 | HTTP-based (Datadog, Elastic, etc.) | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
 | PostgreSQL | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
 | S3 | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
+| Syslog | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
 | BigQuery | No (no-op ack) | — | Silent; cleaned by QueueJanitor |
 
 "Silent" loss means the pipeline marks events as `:ingested` but the ack callback is a no-op, so failed batches are never retried. `QueueJanitor` eventually truncates `:ingested` events regardless of whether they were successfully delivered.
