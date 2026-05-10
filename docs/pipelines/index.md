@@ -1,6 +1,6 @@
 # Backend System
 
-Backends are pluggable storage destinations implemented as adaptors. The `Logflare.Backends.Adaptor` behaviour defines the interface.
+Backends are pluggable storage destinations implemented as adaptors. The {{ mod("Logflare.Backends.Adaptor") }} behaviour defines the interface.
 
 ## Adaptor Behaviour
 
@@ -57,7 +57,7 @@ HTTP-based adaptors share a common pipeline implementation: {{ src("lib/logflare
 
 ## Routing via Rules
 
-The `Logflare.Rules` engine routes log events from a source to additional backends based on configurable criteria. Each rule associates a source with a backend — when an event matches, it's copied to the rule's destination backend.
+The {{ mod("Logflare.Rules") }} engine routes log events from a source to additional backends based on configurable criteria. Each rule associates a source with a backend — when an event matches, it's copied to the rule's destination backend.
 
 ```mermaid
 flowchart LR

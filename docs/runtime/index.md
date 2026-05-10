@@ -1,6 +1,6 @@
 # Supervision Tree
 
-The Logflare runtime is rooted at `Logflare.Supervisor` (`one_for_one`). Children are organised by responsibility — networking, conditional services, core infrastructure, caches, backends, web endpoints, and telemetry.
+The Logflare runtime is rooted at {{ mod("Logflare.Supervisor") }} (`one_for_one`), which is started by `Logflare.Application`. Children are organised by responsibility — networking, conditional services, core infrastructure, caches, backends, web endpoints, and telemetry.
 
 The supervision tree is large enough that a single diagram becomes illegible at content-area width. The diagrams below split the tree by branch, with the top-level overview as a map and each subsequent diagram zooming into one branch.
 
