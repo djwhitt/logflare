@@ -2,7 +2,7 @@
 
 ## Endpoints
 
-`Logflare.Endpoints` provides parameterized SQL query endpoints for analytics. Each endpoint defines a SQL query template with named parameters that can be executed on demand.
+{{ mod("Logflare.Endpoints") }} provides parameterized SQL query endpoints for analytics. Each endpoint defines a SQL query template with named parameters that can be executed on demand.
 
 **Query execution pipeline:**
 
@@ -44,7 +44,7 @@ Core operations:
 
 ## SQL Parsing and Transformation
 
-SQL parsing is handled by a Rust NIF (`sqlparser_ex`) wrapping the [`sqlparser`](https://crates.io/crates/sqlparser) crate. The Elixir interface in `Logflare.Sql` provides:
+SQL parsing is handled by a Rust NIF (`sqlparser_ex`) wrapping the [`sqlparser`](https://crates.io/crates/sqlparser) crate. The Elixir interface in {{ mod("Logflare.Sql") }} provides:
 
 - **`transform/3`** — rewrite source names to physical table names, apply schema prefixes
 - **`expand_subqueries/2`** — inline endpoint/alert references as CTEs

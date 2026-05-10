@@ -1,6 +1,6 @@
 # Log Event Processing
 
-The `Logflare.LogEvent` struct is the core data unit flowing through the system.
+The {{ mod("Logflare.LogEvent") }} struct is the core data unit flowing through the system.
 
 ## Key Fields
 
@@ -26,7 +26,7 @@ The `Logflare.LogEvent` struct is the core data unit flowing through the system.
 
 ## Type Detection
 
-`Logflare.LogEvent.TypeDetection` classifies events using a two-pass strategy:
+{{ mod("Logflare.LogEvent.TypeDetection") }} classifies events using a two-pass strategy:
 
 1. **Explicit metadata** — if `metadata.type` is set (e.g., by OTEL processors), use it directly
 2. **Heuristic detection** — inspect body keys:
