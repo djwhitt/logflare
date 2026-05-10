@@ -20,20 +20,57 @@ The supervision tree is large enough that a single diagram becomes illegible at 
 graph TD
     Root["Logflare.Supervisor<br/><i>one_for_one</i>"]
 
-    Root --> Networking["Finch Pools<br/><i>networking/HTTP clients</i>"]
-    Root --> Conditional["Conditional services<br/><i>Goth, ConfigCat, OTel exporter</i>"]
-    Root --> Core["Core infrastructure<br/><i>Repo, Vault, Oban, PubSub,<br/>ErlSysMon, ClusterSup, TaskSups</i>"]
-    Root --> CCSup["ContextCache.Supervisor"]
-    Root --> CountersGrp["Counters &amp; rates<br/><i>Counters, RateCounters,<br/>PubSubRates, LogEventsCache,<br/>RejectedLogEvents</i>"]
-    Root --> BackendsSup["Backends.Supervisor"]
-    Root --> SourceSupervisor["Sources.Source.Supervisor<br/><i>per-source lifecycle GenServer</i>"]
-    Root --> WebEndpoint["LogflareWeb.Endpoint"]
-    Root --> GRPCSup["GRPC.Server.Supervisor"]
-    Root --> SysMet["SystemMetricsSup"]
-    Root --> Telemetry["Logflare.Telemetry"]
-    Root --> EndpointsPSup["PartitionSupervisor<br/>:Endpoints.ResultsCache"]
-    Root --> StartupTask["Task<br/><i>startup_tasks/0</i>"]
-    Root --> ActiveUserTracker["ActiveUserTracker"]
+    subgraph Net["Networking"]
+        Finch["Finch Pools"]
+        Cond["Conditional services<br/><i>Goth, ConfigCat, OTel exporter</i>"]
+    end
+
+    subgraph Infra["Core infrastructure"]
+        Repo["Repo"]
+        Vault["Vault"]
+        Oban["Oban"]
+        PubSub["Phoenix.PubSub"]
+        ErlSys["ErlSysMon"]
+        Cluster["ClusterSup"]
+        TaskSups["TaskSups"]
+    end
+
+    subgraph Caches["Caches &amp; counters"]
+        CCSup["ContextCache.Supervisor"]
+        Counters["Counters / RateCounters"]
+        PSR["PubSubRates"]
+        LEC["LogEventsCache"]
+        RLE["RejectedLogEvents"]
+    end
+
+    subgraph Ingest["Ingestion"]
+        BackendsSup["Backends.Supervisor"]
+        SourceSupervisor["Sources.Source.Supervisor<br/><i>per-source lifecycle</i>"]
+    end
+
+    subgraph WebGrp["Web"]
+        WebEndpoint["LogflareWeb.Endpoint"]
+        GRPCSup["GRPC.Server.Supervisor"]
+    end
+
+    subgraph Telem["Telemetry"]
+        SysMet["SystemMetricsSup"]
+        Telemetry["Logflare.Telemetry"]
+    end
+
+    subgraph Misc["Endpoints &amp; misc"]
+        EndpointsPSup["Endpoints.ResultsCache<br/><i>PartitionSupervisor</i>"]
+        StartupTask["Startup Task"]
+        AUT["ActiveUserTracker"]
+    end
+
+    Root --> Net
+    Root --> Infra
+    Root --> Caches
+    Root --> Ingest
+    Root --> WebGrp
+    Root --> Telem
+    Root --> Misc
 
     classDef supervisor fill:#4a90d9,stroke:#2c5f8a,color:#fff
     classDef dynamic fill:#6bb86b,stroke:#3d7a3d,color:#fff
@@ -41,8 +78,11 @@ graph TD
 
     class Root,CCSup,BackendsSup,SysMet supervisor
     class EndpointsPSup dynamic
-    class Conditional conditional
+    class Cond conditional
 ```
+
+!!! note "Grouping is pedagogical"
+    The named groups above (Networking, Core infrastructure, etc.) are reader-friendly clusters — they are not actual supervisor children. Every node inside a group is a direct child of `Logflare.Supervisor`.
 
 **Key ordering constraints:**
 
@@ -55,7 +95,7 @@ graph TD
 Seven named [Finch](https://hexdocs.pm/finch/) connection pools serve different traffic classes. They are listed by `Networking.pools/0` and started directly under the root.
 
 ```mermaid
-graph TD
+graph LR
     FinchPools["Finch Pools<br/><i>from Networking.pools/0</i>"]
     FinchPools --> FinchGoth["Finch :FinchGoth"]
     FinchPools --> FinchHttp1["Finch :FinchDefaultHttp1"]
@@ -104,7 +144,7 @@ graph TD
 `Backends.Supervisor` (`one_for_one`) owns ingestion-side infrastructure: the event queue, registries, the per-source partition supervisor, and adaptor-specific support processes. ClickHouse-specific connection management is split into a separate diagram below for legibility.
 
 ```mermaid
-graph TD
+graph LR
     BackendsSup["Backends.Supervisor<br/><i>one_for_one</i>"]
     BackendsSup --> IEQ["IngestEventQueue"]
     BackendsSup --> BufferCache["IngestEventQueue.BufferCacheWorker"]
@@ -121,8 +161,6 @@ graph TD
     BackendsSup --> SourceRegistry["Registry :SourceRegistry"]
     BackendsSup --> BackendRegistry["Registry :BackendRegistry"]
 
-    BackendsSup --> CHGroup["ClickHouse support<br/><i>see below</i>"]
-
     classDef supervisor fill:#4a90d9,stroke:#2c5f8a,color:#fff
     classDef dynamic fill:#6bb86b,stroke:#3d7a3d,color:#fff
     classDef registry fill:#d9534f,stroke:#a94442,color:#fff
@@ -131,6 +169,8 @@ graph TD
     class PgRepos,ConsDynSup,SourcesSup dynamic
     class SourceRegistry,BackendRegistry registry
 ```
+
+ClickHouse-specific support processes (connection pools, schema cache) are split into their own diagram below to keep this one legible.
 
 ### ClickHouse-specific support processes
 
@@ -161,7 +201,7 @@ graph TD
 `SourceSup` is a `one_for_one` supervisor spawned dynamically for each active source under `PartitionSupervisor :Backends.SourcesSup`. It owns per-source workers (rate counters, notification servers, billing) and one adaptor child per backend (for non-consolidated backends; consolidated backends run under `ConsolidatedSup` instead).
 
 ```mermaid
-graph TD
+graph LR
     SourcesSup["PartitionSupervisor<br/>:Backends.SourcesSup<br/><i>child: DynamicSupervisor</i>"]
     SourcesSup -.->|"dynamic"| SourceSup["SourceSup<br/><i>per source, one_for_one</i>"]
     SourceSup --> RateCounterServer["RateCounterServer"]
