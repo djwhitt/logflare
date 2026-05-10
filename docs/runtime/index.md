@@ -14,7 +14,7 @@ The supervision tree is large enough that a single diagram becomes illegible at 
 
 ## Top-level overview
 
-`Logflare.Supervisor` directly supervises 14+ children. The diagram below collapses each major branch to a single labeled node — see the per-branch diagrams further down for detail.
+{{ mod("Logflare.Supervisor") }} directly supervises 14+ children. The diagram below collapses each major branch to a single labeled node — see the per-branch diagrams further down for detail.
 
 ```mermaid
 graph TD
@@ -82,7 +82,7 @@ graph TD
 ```
 
 !!! note "Grouping is pedagogical"
-    The named groups above (Networking, Core infrastructure, etc.) are reader-friendly clusters — they are not actual supervisor children. Every node inside a group is a direct child of `Logflare.Supervisor`.
+    The named groups above (Networking, Core infrastructure, etc.) are reader-friendly clusters — they are not actual supervisor children. Every node inside a group is a direct child of {{ mod("Logflare.Supervisor") }}.
 
 **Key ordering constraints:**
 

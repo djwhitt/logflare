@@ -10,7 +10,22 @@ MODULE_OVERRIDES = {
 }
 
 
+def _strip_function_suffix(name):
+    """Drop trailing function-like segments (`module.foo/0`, `module.foo!`).
+
+    A segment is treated as a function (not a sub-module) when its first
+    character is lowercase or it contains a "/". Walks right-to-left so
+    "Logflare.LogEvent.TypeDetection" stays intact while
+    "Logflare.SingleTenant.single_tenant?/0" reduces to "Logflare.SingleTenant".
+    """
+    parts = name.split(".")
+    while parts and (parts[-1][0].islower() or "/" in parts[-1]):
+        parts.pop()
+    return ".".join(parts)
+
+
 def _module_to_path(name):
+    name = _strip_function_suffix(name)
     if name in MODULE_OVERRIDES:
         return MODULE_OVERRIDES[name]
     parts = [re.sub(r"(?<!^)(?=[A-Z])", "_", p).lower() for p in name.split(".")]
