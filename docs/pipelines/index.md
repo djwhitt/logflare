@@ -53,7 +53,7 @@ Backends are pluggable storage destinations implemented as adaptors. The `Logfla
 | **Syslog** | Protocol | TCP/UDP | RFC 5424 |
 | **OTLP** | Protocol | HTTP/Protobuf | OpenTelemetry export (gRPC not yet enabled) |
 
-HTTP-based adaptors share a common pipeline implementation (`lib/logflare/backends/adaptor/http_based/pipeline.ex`).
+HTTP-based adaptors share a common pipeline implementation: {{ src("lib/logflare/backends/adaptor/http_based/pipeline.ex") }}.
 
 ## Routing via Rules
 

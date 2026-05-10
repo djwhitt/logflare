@@ -52,9 +52,9 @@ flowchart TB
 
 Two plugs in the `:require_ingest_api_auth` pipeline gate requests before any queuing occurs:
 
-**RateLimiter** (`plugs/rate_limiter.ex`) — checks user-level and per-source API quotas derived from the billing plan via `Users.API.verify_api_rates_quotas/1`. Returns **HTTP 429** with `X-Rate-Limit` headers when quotas are exceeded. This is purely rate-based and independent of backend health.
+**RateLimiter** ({{ src("lib/logflare_web/controllers/plugs/rate_limiter.ex") }}) — checks user-level and per-source API quotas derived from the billing plan via `Users.API.verify_api_rates_quotas/1`. Returns **HTTP 429** with `X-Rate-Limit` headers when quotas are exceeded. This is purely rate-based and independent of backend health.
 
-**BufferLimiter** (`plugs/buffer_limiter.ex`) — calls `Backends.cached_local_pending_buffer_full?/1`, which reads cached queue depths from `PubSubRates.Cache`. Returns **HTTP 429 "Buffer Full"** when the checked queues exceed 30,000 events (strict `>`, so exactly 30,000 is not considered full). This is the mechanism by which downstream congestion surfaces to clients.
+**BufferLimiter** ({{ src("lib/logflare_web/controllers/plugs/buffer_limiter.ex") }}) — calls `Backends.cached_local_pending_buffer_full?/1`, which reads cached queue depths from `PubSubRates.Cache`. Returns **HTTP 429 "Buffer Full"** when the checked queues exceed 30,000 events (strict `>`, so exactly 30,000 is not considered full). This is the mechanism by which downstream congestion surfaces to clients.
 
 The check follows two paths depending on source configuration:
 
@@ -196,14 +196,14 @@ When a backend slows down or becomes unavailable, pressure propagates upward thr
 
 | Constant | Value | Location | Purpose |
 |----------|-------|----------|---------|
-| `@max_queue_size` | 30,000 | `ingest_event_queue.ex:17` | Per-queue routing cap in `add_to_table` |
-| `@max_pending_buffer_len_per_queue` | 30,000 | `backends.ex:38` | BufferLimiter fullness threshold |
-| QueueJanitor `max` | 36,000 | `queue_janitor.ex:24` | Hard drop threshold (30K * 1.2) |
-| QueueJanitor consolidated `max` | 360,000 | `queue_janitor.ex:44` | 10x multiplier (not currently used) |
-| `@scaling_threshold` | 5,000 | `clickhouse_adaptor.ex:36` | DynamicPipeline scale-up trigger |
-| GenStage `buffer_size` | 10,000 | `buffer_producer.ex:49` | Internal producer buffer before discard |
-| `BufferCacheWorker` interval | 2,500ms | `buffer_cache_worker.ex:13` | How often queue depths are cached |
-| `QueueJanitor` interval | 1,000–10,000ms | `queue_janitor.ex:21` | Adaptive cleanup frequency |
+| `@max_queue_size` | 30,000 | {{ src("lib/logflare/backends/ingest_event_queue.ex", 17) }} | Per-queue routing cap in `add_to_table` |
+| `@max_pending_buffer_len_per_queue` | 30,000 | {{ src("lib/logflare/backends.ex", 38) }} | BufferLimiter fullness threshold |
+| QueueJanitor `max` | 36,000 | {{ src("lib/logflare/backends/ingest_event_queue/queue_janitor.ex", 24) }} | Hard drop threshold (30K * 1.2) |
+| QueueJanitor consolidated `max` | 360,000 | {{ src("lib/logflare/backends/ingest_event_queue/queue_janitor.ex", 44) }} | 10x multiplier (not currently used) |
+| `@scaling_threshold` | 5,000 | {{ src("lib/logflare/backends/adaptor/clickhouse_adaptor.ex", 36) }} | DynamicPipeline scale-up trigger |
+| GenStage `buffer_size` | 10,000 | {{ src("lib/logflare/backends/buffer_producer.ex", 49) }} | Internal producer buffer before discard |
+| `BufferCacheWorker` interval | 2,500ms | {{ src("lib/logflare/backends/ingest_event_queue/buffer_cache_worker.ex", 13) }} | How often queue depths are cached |
+| `QueueJanitor` interval | 1,000–10,000ms | {{ src("lib/logflare/backends/ingest_event_queue/queue_janitor.ex", 21) }} | Adaptive cleanup frequency |
 
 ## Design Trade-offs and Known Gaps
 
