@@ -92,18 +92,18 @@ graph TD
 
 ## Networking — Finch pools
 
-Seven named [Finch](https://hexdocs.pm/finch/) connection pools serve different traffic classes. They are listed by `Networking.pools/0` and started directly under the root.
+Six named [Finch](https://hexdocs.pm/finch/) HTTP connection pools serve different traffic classes, plus a separate gRPC pool for the BigQuery Storage Write API. All are listed by `Networking.pools/0` and started directly under the root.
 
 ```mermaid
 graph LR
-    FinchPools["Finch Pools<br/><i>from Networking.pools/0</i>"]
-    FinchPools --> FinchGoth["Finch :FinchGoth"]
-    FinchPools --> FinchHttp1["Finch :FinchDefaultHttp1"]
-    FinchPools --> FinchGoogleApi["Finch :GoogleApiClient"]
-    FinchPools --> FinchIngest["Finch :FinchIngest"]
-    FinchPools --> FinchQuery["Finch :FinchQuery"]
-    FinchPools --> FinchDefault["Finch :FinchDefault"]
-    FinchPools --> FinchCH["Finch :FinchClickHouseIngest"]
+    Pools["Networking.pools/0"]
+    Pools --> FinchGoth["Finch :FinchGoth"]
+    Pools --> FinchHttp1["Finch :FinchDefaultHttp1"]
+    Pools --> FinchIngest["Finch :FinchIngest"]
+    Pools --> FinchQuery["Finch :FinchQuery"]
+    Pools --> FinchDefault["Finch :FinchDefault"]
+    Pools --> FinchCH["Finch :FinchClickHouseIngest"]
+    Pools --> GrpcPool["Logflare.Networking.GrpcPool<br/><i>BigQuery Storage Write API</i>"]
 ```
 
 ## Conditional services
