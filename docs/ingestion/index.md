@@ -15,7 +15,7 @@ OpenTelemetry Protobuf ingestion uses a separate `:otlp_api` pipeline (see [Open
 Ingestion requests pass through a plug pipeline that handles auth, rate limiting, and buffer limiting:
 
 ```mermaid
-flowchart LR
+flowchart TB
     REQ["Request"] --> Auth["VerifyApiAccess"]
     Auth --> Fetch["FetchResource"]
     Fetch --> Access["VerifyResourceAccess"]

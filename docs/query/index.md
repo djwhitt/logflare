@@ -7,7 +7,7 @@
 **Query execution pipeline:**
 
 ```mermaid
-flowchart LR
+flowchart TB
     REQ["API Request<br/>+ parameters"] --> EXP["Expand<br/>subqueries"]
     EXP --> TX["Sql.transform<br/>(rewrite sources → tables)"]
     TX --> DT["Dialect<br/>translation"]
