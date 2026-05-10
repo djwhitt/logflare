@@ -1,3 +1,7 @@
+[tools]
+python = "3.12"
+"pipx:mkdocs-material" = "latest"
+
 [tasks.sync-upstream]
 description = "Add upstream remote if missing, fetch it, and rebase current branch onto upstream/main"
 run = """
@@ -7,3 +11,11 @@ fi
 git fetch upstream
 git rebase upstream/main
 """
+
+[tasks."docs:serve"]
+description = "Run MkDocs dev server at http://127.0.0.1:8000"
+run = "mkdocs serve"
+
+[tasks."docs:build"]
+description = "Build static docs site to ./site/"
+run = "mkdocs build"
