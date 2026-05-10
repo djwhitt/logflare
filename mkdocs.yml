@@ -5,6 +5,15 @@ edit_uri: edit/djwhitt/main/docs/
 
 docs_dir: docs
 
+extra:
+  code_repo: https://github.com/djwhitt/logflare
+  code_branch: djwhitt/main
+
+plugins:
+  - search
+  - macros:
+      module_name: mkdocs_macros
+
 exclude_docs: |
   /docs.logflare.com/
   *.mmd
