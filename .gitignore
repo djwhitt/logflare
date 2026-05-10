@@ -91,6 +91,7 @@ dev-*
 # ai stuff
 !CLAUDE.md
 !AGENTS.md
+CLAUDE.local.md
 .cursorrules
 .claude
 .treq
