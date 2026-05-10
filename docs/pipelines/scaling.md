@@ -1,6 +1,6 @@
 # Dynamic Pipeline Scaling
 
-`Logflare.Backends.DynamicPipeline` dynamically scales Broadway pipeline **shards** based on queue depth.
+{{ mod("Logflare.Backends.DynamicPipeline") }} dynamically scales Broadway pipeline **shards** based on queue depth.
 
 ```mermaid
 flowchart TB

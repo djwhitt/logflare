@@ -47,7 +47,7 @@ flowchart TB
 
 ## IngestEventQueue
 
-`Logflare.Backends.IngestEventQueue` is a GenServer managing ETS-backed buffers that sit between ingestion and Broadway:
+{{ mod("Logflare.Backends.IngestEventQueue") }} is a GenServer managing ETS-backed buffers that sit between ingestion and Broadway:
 
 - **ETS mapping table** — fan-out pattern directing events to per-queue tables
 - **Per-queue tables** — one per `{source_id, backend_id, pid}` or `{:consolidated, backend_id, pid}`
