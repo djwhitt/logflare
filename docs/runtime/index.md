@@ -17,25 +17,15 @@ The supervision tree is large enough that a single diagram becomes illegible at 
 {{ mod("Logflare.Supervisor") }} directly supervises 14+ children. The diagram below collapses each major branch to a single labeled node — see the per-branch diagrams further down for detail.
 
 ```mermaid
-graph LR
+graph TD
     Root["Logflare.Supervisor<br/><i>one_for_one</i>"]
 
-    Root --> Net
-    Root --> Infra
-    Root --> Caches
-    Root --> Ingest
-    Root --> WebGrp
-    Root --> Telem
-    Root --> Misc
-
     subgraph Net["Networking"]
-        direction LR
         Finch["Finch Pools"]
-        Cond["Conditional services<br/><i>Goth, ConfigCat, OTel</i>"]
+        Cond["Conditional services<br/><i>Goth, ConfigCat, OTel exporter</i>"]
     end
 
     subgraph Infra["Core infrastructure"]
-        direction LR
         Repo["Repo"]
         Vault["Vault"]
         Oban["Oban"]
@@ -46,7 +36,6 @@ graph LR
     end
 
     subgraph Caches["Caches &amp; counters"]
-        direction LR
         CCSup["ContextCache.Supervisor"]
         Counters["Counters / RateCounters"]
         PSR["PubSubRates"]
@@ -55,29 +44,33 @@ graph LR
     end
 
     subgraph Ingest["Ingestion"]
-        direction LR
         BackendsSup["Backends.Supervisor"]
-        SourceSupervisor["Sources.Source.Supervisor"]
+        SourceSupervisor["Sources.Source.Supervisor<br/><i>per-source lifecycle</i>"]
     end
 
     subgraph WebGrp["Web"]
-        direction LR
         WebEndpoint["LogflareWeb.Endpoint"]
         GRPCSup["GRPC.Server.Supervisor"]
     end
 
     subgraph Telem["Telemetry"]
-        direction LR
         SysMet["SystemMetricsSup"]
         Telemetry["Logflare.Telemetry"]
     end
 
     subgraph Misc["Endpoints &amp; misc"]
-        direction LR
-        EndpointsPSup["Endpoints.ResultsCache"]
+        EndpointsPSup["Endpoints.ResultsCache<br/><i>PartitionSupervisor</i>"]
         StartupTask["Startup Task"]
         AUT["ActiveUserTracker"]
     end
+
+    Root --> Net
+    Root --> Infra
+    Root --> Caches
+    Root --> Ingest
+    Root --> WebGrp
+    Root --> Telem
+    Root --> Misc
 
     classDef supervisor fill:#4a90d9,stroke:#2c5f8a,color:#fff
     classDef dynamic fill:#6bb86b,stroke:#3d7a3d,color:#fff
