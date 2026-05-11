@@ -99,6 +99,9 @@ CLAUDE.local.md
 # mkdocs build output
 /site/
 
+# python bytecode from mkdocs_macros
+__pycache__/
+
 # Rust binary artifacts
 /target/
 
@@ -109,4 +112,10 @@ CLAUDE.local.md
 # nix related functionality
 .envrc
 flake.nix
+devenv.nix
+devenv.yaml
+devenv.lock
+devenv.local.nix
+/.devenv/
+/.direnv/
 flake.lock
