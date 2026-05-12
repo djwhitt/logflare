@@ -17,33 +17,35 @@ When scores are close, prefer **Quick win** items over **Strategic** ones unless
 
 ## Priority Table
 
-| # | Lane | Target | Ease | Safety | Impact | Score |
-|---|------|--------|---:|---:|---:|---:|
-| 1 | Quick win | Rewrite `MetadataCleaner.flatten/1` to avoid intermediate lists | 4 | 4 | 5 | 4.50 |
-| 2 | Quick win | Fix `list_counts_with_tids/1` queue-stats fast path | 4 | 4 | 4 | 4.00 |
-| 3 | Quick win | No-op short-circuit in `update_all_keys_deep/2` (paired with #5) | 3 | 3 | 5 | 4.00 |
-| 4 | Quick win | Reduce BigQuery resolver source-metrics duplication | 3 | 4 | 4 | 3.70 |
-| 5 | Quick win | BigQuery key sanitizer fast path | 3 | 3 | 4 | 3.50 |
-| 6 | Quick win | Default-case fast path for `apply_custom_event_message/2` | 3 | 3 | 4 | 3.50 |
-| 7 | Quick win | Use batch-level timestamps in `LogEvent.make/2` | 4 | 4 | 3 | 3.50 |
-| 8 | Quick win | Count pending events directly from known queue tids | 4 | 4 | 3 | 3.50 |
-| 9 | Measured | Pop non-default backend queues instead of mark-ingested + janitor | 3 | 3 | 4 | 3.50 |
-| 10 | Strategic | Batch source-rule routing instead of recursive single-event ingest | 2 | 2 | 5 | 3.50 |
-| 11 | Strategic | Replace Ecto changeset construction in `LogEvent.make/2` | 2 | 2 | 5 | 3.50 |
-| 12 | Quick win | Remove duplicate `ensure_source_sup_started/1` call | 5 | 4 | 2 | 3.30 |
-| 13 | Measured | Benchmark ETS mapper-table `read_concurrency` | 4 | 3 | 3 | 3.30 |
-| 14 | Quick win | Count valid events once and pass count through dispatch | 4 | 5 | 2 | 3.20 |
-| 15 | Measured | Aggregate buffer lengths in one `BufferCacheWorker` pass | 3 | 4 | 3 | 3.20 |
-| 16 | Quick win | Cache default-ingest backend ids for buffer-full checks | 4 | 4 | 2 | 3.00 |
-| 17 | Measured | Preparse drop-filter paths and regexes | 3 | 3 | 3 | 3.00 |
-| 18 | Strategic | Deduplicate backend-rule dispatch if semantics allow | 2 | 2 | 4 | 3.00 |
-| 19 | Opportunistic | Simplify resolver count math | 5 | 5 | 1 | 3.00 |
-| 20 | Opportunistic | Rework `fetch_events/2` flattening / nested-list accumulation | 4 | 4 | 2 | 2.80 |
-| 21 | Opportunistic | Fix BigQuery IAM paginator accumulation | 5 | 4 | 1 | 2.80 |
-| 22 | Evidence needed | Optimize ClickHouse `Array(JSON)` encoding (only with profiling) | 2 | 2 | 3 | 2.50 |
-| 23 | Opportunistic | Avoid dynamic atoms for Goth partition supervisor names | 3 | 4 | 1 | 2.20 |
-| 24 | Dev only | Defer eager `Mimic.copy` at test boot | 2 | 2 | 1 | 1.50 |
-| 25 | Maintenance | Split `dialect_translation.ex` | 1 | 2 | 1 | 1.20 |
+`E/S/I` = Ease / Safety / Impact, each `1–5`.
+
+| # | Lane | Target | E/S/I | Score |
+|---|------|--------|-------|------:|
+| 1 | Quick win | Rewrite `MetadataCleaner.flatten/1` | 4/4/5 | 4.50 |
+| 2 | Quick win | Fix `list_counts_with_tids/1` fast path | 4/4/4 | 4.00 |
+| 3 | Quick win | `update_all_keys_deep/2` no-op short-circuit (pair with #5) | 3/3/5 | 4.00 |
+| 4 | Quick win | BigQuery resolver source-metrics dedupe | 3/4/4 | 3.70 |
+| 5 | Quick win | BigQuery key sanitizer fast path | 3/3/4 | 3.50 |
+| 6 | Quick win | `apply_custom_event_message/2` default fast path | 3/3/4 | 3.50 |
+| 7 | Quick win | Batch-level timestamps in `LogEvent.make/2` | 4/4/3 | 3.50 |
+| 8 | Quick win | Count pending events from known queue tids | 4/4/3 | 3.50 |
+| 9 | Measured | Pop non-default backend queues vs mark-ingested + janitor | 3/3/4 | 3.50 |
+| 10 | Strategic | Batch source-rule routing | 2/2/5 | 3.50 |
+| 11 | Strategic | Replace Ecto changeset in `LogEvent.make/2` | 2/2/5 | 3.50 |
+| 12 | Quick win | Drop duplicate `ensure_source_sup_started/1` call | 5/4/2 | 3.30 |
+| 13 | Measured | Benchmark ETS mapper-table `read_concurrency` | 4/3/3 | 3.30 |
+| 14 | Quick win | Count valid events once, thread through dispatch | 4/5/2 | 3.20 |
+| 15 | Measured | Aggregate `BufferCacheWorker` buffer lengths in one pass | 3/4/3 | 3.20 |
+| 16 | Quick win | Cache default-ingest backend ids for buffer-full checks | 4/4/2 | 3.00 |
+| 17 | Measured | Preparse drop-filter paths and regexes | 3/3/3 | 3.00 |
+| 18 | Strategic | Deduplicate backend-rule dispatch | 2/2/4 | 3.00 |
+| 19 | Opportunistic | Simplify resolver count math | 5/5/1 | 3.00 |
+| 20 | Opportunistic | Rework `fetch_events/2` flattening | 4/4/2 | 2.80 |
+| 21 | Opportunistic | Fix BigQuery IAM paginator accumulation | 5/4/1 | 2.80 |
+| 22 | Evidence needed | Optimize ClickHouse `Array(JSON)` encoding | 2/2/3 | 2.50 |
+| 23 | Opportunistic | Avoid dynamic atoms for Goth partition sup names | 3/4/1 | 2.20 |
+| 24 | Dev only | Defer eager `Mimic.copy` at test boot | 2/2/1 | 1.50 |
+| 25 | Maintenance | Split `dialect_translation.ex` | 1/2/1 | 1.20 |
 
 ## Tier 1: High-Value Quick Wins
 
