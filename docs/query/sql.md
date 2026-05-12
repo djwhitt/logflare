@@ -107,6 +107,9 @@ These are the basis for `find_all_source_names/1`, `extract_all_parameters/1`, t
 
 ## Dialect Translation (BigQuery → PostgreSQL)
 
+!!! warning "Slated for deprecation"
+    `Sql.translate/4` and {{ mod("Logflare.Sql.DialectTranslation") }} are slated for removal — see [Legacy & Deprecated](../legacy.md#sql-dialect-translation-bigquery-postgresql). New PostgreSQL endpoints should be authored as PostgreSQL queries (`:pg_sql`) directly.
+
 {{ mod("Logflare.Sql.DialectTranslation") }} translates BigQuery SQL to a Postgres-compatible form so the same endpoint SQL can run against either backend. It runs four passes over the AST plus a string-level cleanup:
 
 | Pass | Purpose |
