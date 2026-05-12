@@ -45,6 +45,7 @@ theme:
 nav:
   - Overview: index.md
   - Code Layout: code-layout.md
+  - Legacy & Deprecated: legacy.md
   - Ingestion:
       - ingestion/index.md
       - Log Event Processing: ingestion/log-events.md

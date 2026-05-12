@@ -41,7 +41,7 @@ Backends are pluggable storage destinations implemented as adaptors. The {{ mod(
 | **BigQuery** | Database | gRPC (Storage Write API) | Arrow IPC serialization via Rust NIF. The adaptor wraps the older per-source `Sources.Source.BigQuery.Pipeline` and `Schema` modules inside a `DynamicPipeline` supervisor |
 | **ClickHouse** | Database | Native TCP / HTTP | LZ4 compression via Rust NIF; consolidated ingestion |
 | **PostgreSQL** | Database | PostgreSQL wire protocol | Via [Postgrex](https://hexdocs.pm/postgrex/) |
-| **Elasticsearch** | Search engine | HTTP | |
+| **Elasticsearch** | Search engine | HTTP | Slated for removal — see [Legacy & Deprecated](../legacy.md#elastic-backend-adaptor) |
 | **Datadog** | SaaS | HTTP | |
 | **Loki** | Log store | HTTP | [Grafana Loki](https://grafana.com/oss/loki/) push API |
 | **S3** | Object storage | HTTP | Byte-based batch splitting |

@@ -200,6 +200,9 @@ graph TD
 
 `SourceSup` is a `one_for_one` supervisor spawned dynamically for each active source under `PartitionSupervisor :Backends.SourcesSup`. It owns per-source workers (rate counters, notification servers, billing) and one adaptor child per backend (for non-consolidated backends; consolidated backends run under `ConsolidatedSup` instead).
 
+!!! note "Legacy"
+    The per-source notification servers, `RateCounterServer`, and `BillingWriter` predate the modern Backends/Adaptor/Broadway pipeline architecture and are considered legacy — see [Legacy & Deprecated](../legacy.md#per-source-genservers-under-sourcesup).
+
 ```mermaid
 graph LR
     SourcesSup["PartitionSupervisor<br/>:Backends.SourcesSup<br/><i>child: DynamicSupervisor</i>"]
