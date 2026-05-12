@@ -59,6 +59,8 @@ nav:
       - Rust NIFs: runtime/rust-nifs.md
   - Query:
       - query/index.md
+      - LQL: query/lql.md
+      - SQL Parsing: query/sql.md
       - Alerting: query/alerting.md
   - Operations:
       - operations/index.md

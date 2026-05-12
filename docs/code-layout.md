@@ -24,8 +24,8 @@ A directory-level map of the repository, linked to the architecture pages where 
 | {{ src("lib/logflare/backends/ingest_event_queue/") }} | ETS-backed event queue, `BufferCacheWorker`, `QueueJanitor` | [IngestEventQueue](pipelines/broadway.md#ingesteventqueue), [Layer 2](pipelines/backpressure.md#layer-2-queue-buffering-ingesteventqueue) |
 | {{ src("lib/logflare/logs/") }} | `LogEvent` struct, OTEL protobuf decoding, ingest transformers | [Log Event Processing](ingestion/log-events.md) |
 | {{ src("lib/logflare/endpoints/") }} | Parameterized SQL endpoints, result cache | [Query and Analytics](query/index.md) |
-| {{ src("lib/logflare/sql/") }} | SQL parsing and transformation (wraps the `sqlparser_ex` NIF) | [SQL Parsing](query/index.md#sql-parsing-and-transformation) |
-| {{ src("lib/logflare/lql/") }} | LQL parser (NimbleParsec) and dialect compilers | [LQL](query/index.md#lql-logflare-query-language) |
+| {{ src("lib/logflare/sql/") }} | SQL parsing and transformation (wraps the `sqlparser_ex` NIF) | [SQL Parsing](query/sql.md) |
+| {{ src("lib/logflare/lql/") }} | LQL parser (NimbleParsec) and dialect compilers | [LQL](query/lql.md) |
 | {{ src("lib/logflare/mapper/") }} | Data mapping for ClickHouse ingestion (wraps the `mapper_ex` NIF) | [Rust NIFs](runtime/rust-nifs.md) |
 | {{ src("lib/logflare/rules/") }} | Routing rules engine, `RulesTree`, `SourceRouter` | [Routing via Rules](pipelines/index.md#routing-via-rules), [Routing Semantics](pipelines/index.md#routing-semantics) |
 | {{ src("lib/logflare/alerting/") }} | Oban-scheduled SQL alerts and notifications | [Alerting](query/alerting.md) |

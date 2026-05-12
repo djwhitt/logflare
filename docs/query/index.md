@@ -25,27 +25,9 @@ Endpoints support:
 - **Result caching** — configurable TTL via `ResultsCache`
 - **Labels** — extracted from config, headers, and query params for downstream filtering
 
-## LQL (Logflare Query Language)
+## LQL and SQL
 
-LQL is a backend-agnostic query DSL parsed via [NimbleParsec](https://hexdocs.pm/nimble_parsec/). It compiles to dialect-specific SQL for each backend.
+Two query languages feed the analytics layer:
 
-| LQL Dialect | Target Backend |
-|-------------|---------------|
-| `:bigquery` | BigQuery SQL |
-| `:clickhouse` | ClickHouse SQL |
-| `:postgres` | PostgreSQL SQL |
-
-Core operations:
-
-- `decode/2` — parse LQL string into rule structs (`FilterRule`, `SelectRule`, `FromRule`)
-- `encode/1` — serialize rules back to LQL string
-- `apply_rules/3` — apply rules to an `Ecto.Query`
-- `to_sandboxed_sql/3` — compile to SQL for sandboxed endpoint execution
-
-## SQL Parsing and Transformation
-
-SQL parsing is handled by a Rust NIF (`sqlparser_ex`) wrapping the [`sqlparser`](https://crates.io/crates/sqlparser) crate. The Elixir interface in {{ mod("Logflare.Sql") }} provides:
-
-- **`transform/3`** — rewrite source names to physical table names, apply schema prefixes
-- **`expand_subqueries/2`** — inline endpoint/alert references as CTEs
-- **Dialect translation** — convert between BigQuery, ClickHouse, and PostgreSQL SQL variants
+- **[LQL](lql.md)** — Logflare's compact search-engine-style DSL (parsed via [NimbleParsec](https://hexdocs.pm/nimble_parsec/)). Used in the search UI, routing rules, and saved searches; compiles to dialect-specific SQL via per-backend transformers.
+- **[SQL Parsing and Transformation](sql.md)** — every endpoint and alert SQL string is parsed (via the `sqlparser_ex` Rust NIF), validated, source-name-rewritten, and optionally subquery-expanded or sandboxed before reaching a backend.
