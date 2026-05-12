@@ -45,6 +45,7 @@ theme:
 nav:
   - Overview: index.md
   - Code Layout: code-layout.md
+  - Optimization Targets: optimization.md
   - Legacy & Deprecated: legacy.md
   - Ingestion:
       - ingestion/index.md
