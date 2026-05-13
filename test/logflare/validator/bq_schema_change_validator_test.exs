@@ -47,7 +47,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
     test "correctly builds a typemap from metadata" do
       assert :metadata
              |> SchemaFactory.build(variant: :third)
-             |> to_typemap() == typemap_for_third().metadata.fields
+             |> to_typemap() == metadata_typemap_for_third()
     end
 
     test "try_merge returns :ok for correct metadata and schema" do
@@ -161,6 +161,35 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
 
       assert valid?(metadata, schema)
     end
+  end
+
+  # User-input branch of to_typemap/1 yields string keys; the bq_schema
+  # branch in typemap_for_third/0 yields atom keys because BQ field names
+  # are bounded.
+  def metadata_typemap_for_third do
+    %{
+      "datacenter" => %{t: :string},
+      "ip_address" => %{t: :string},
+      "request_method" => %{t: :string},
+      "user" => %{
+        t: :map,
+        fields: %{
+          "browser" => %{t: :string},
+          "id" => %{t: :integer},
+          "vip" => %{t: :boolean},
+          "company" => %{t: :string},
+          "login_count" => %{t: :integer},
+          "address" => %{
+            t: :map,
+            fields: %{
+              "street" => %{t: :string},
+              "city" => %{t: :string},
+              "st" => %{t: :string}
+            }
+          }
+        }
+      }
+    }
   end
 
   def typemap_for_third do

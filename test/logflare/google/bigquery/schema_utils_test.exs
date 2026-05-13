@@ -122,4 +122,67 @@ defmodule Logflare.Google.BigQuery.SchemaUtilsTest do
       assert SchemaUtils.bq_schema_to_flat_typemap(nil) == %{}
     end
   end
+
+  describe "to_typemap/1 (user-input map)" do
+    test "string keys pass through as binaries (no atom conversion)" do
+      assert SchemaUtils.to_typemap(%{"name" => "alice", "count" => 1}) == %{
+               "name" => %{t: :string},
+               "count" => %{t: :integer}
+             }
+    end
+
+    test "atom keys are stringified" do
+      assert SchemaUtils.to_typemap(%{name: "alice"}) == %{"name" => %{t: :string}}
+    end
+
+    test "nested maps keep string keys at every level" do
+      input = %{
+        "request" => %{
+          "method" => "POST",
+          "headers" => %{"content_type" => "application/json"}
+        }
+      }
+
+      assert SchemaUtils.to_typemap(input) == %{
+               "request" => %{
+                 t: :map,
+                 fields: %{
+                   "method" => %{t: :string},
+                   "headers" => %{
+                     t: :map,
+                     fields: %{"content_type" => %{t: :string}}
+                   }
+                 }
+               }
+             }
+    end
+
+    test "DateTime and NaiveDateTime values become :datetime leaves" do
+      input = %{
+        "created_at" => DateTime.utc_now(),
+        "modified_at" => NaiveDateTime.utc_now()
+      }
+
+      assert SchemaUtils.to_typemap(input) == %{
+               "created_at" => %{t: :datetime},
+               "modified_at" => %{t: :datetime}
+             }
+    end
+
+    test "empty containers are dropped" do
+      input = %{"keep" => 1, "drop_list" => [], "drop_map" => %{}, "drop_nested" => [%{}]}
+      assert SchemaUtils.to_typemap(input) == %{"keep" => %{t: :integer}}
+    end
+
+    test "list of maps merges field shapes into a single :map type" do
+      input = %{"users" => [%{"name" => "a"}, %{"id" => 1}]}
+
+      assert SchemaUtils.to_typemap(input) == %{
+               "users" => %{
+                 t: :map,
+                 fields: %{"name" => %{t: :string}, "id" => %{t: :integer}}
+               }
+             }
+    end
+  end
 end

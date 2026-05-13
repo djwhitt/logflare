@@ -72,63 +72,40 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
 
-  @spec to_typemap(map | TS.t() | nil) :: %{required(atom) => map | atom}
+  @spec to_typemap(map | TS.t() | nil) :: %{required(binary | atom) => map | atom}
   def to_typemap(nil), do: nil
 
   def to_typemap(%TS{} = schema), do: to_typemap(schema, from: :bigquery_schema)
 
   def to_typemap(metadata) when is_map(metadata) do
-    for {k, v} <- metadata, not_empty_container?(v), into: Map.new() do
-      v =
-        cond do
-          match?(%DateTime{}, v) or
-              match?(%NaiveDateTime{}, v) ->
-            %{t: :datetime}
-
-          is_list(v) and is_map(hd(v)) ->
-            %{
-              t: :map,
-              fields: Enum.reduce(v, %{}, &Map.merge(&2, to_typemap(&1)))
-            }
-
-          is_list(v) and not is_map(hd(v)) ->
-            %{t: {:list, type_of(hd(v))}}
-
-          is_map(v) ->
-            %{t: :map, fields: to_typemap(v)}
-
-          true ->
-            %{t: type_of(v)}
-        end
-
-      k =
-        cond do
-          is_atom(k) -> k
-          String.valid?(k) -> String.to_atom(k)
-          true -> decode_until_valid!(k)
-        end
-
-      {k, v}
-    end
+    Enum.reduce(metadata, %{}, fn {k, v}, acc ->
+      if not_empty_container?(v) do
+        Map.put(acc, normalize_key(k), value_typemap(v))
+      else
+        acc
+      end
+    end)
   end
 
-  defp decode_until_valid!(k, encodings \\ [:utf8, :unicode, :latin1])
+  defp value_typemap(%DateTime{}), do: %{t: :datetime}
+  defp value_typemap(%NaiveDateTime{}), do: %{t: :datetime}
 
-  defp decode_until_valid!(k, []) do
-    raise("Incoming field #{inspect(k)} is not a valid string")
+  defp value_typemap([h | _] = list) when is_map(h) do
+    %{t: :map, fields: Enum.reduce(list, %{}, &Map.merge(&2, to_typemap(&1)))}
   end
 
-  defp decode_until_valid!(k, [encoding | encodings]) when is_binary(k) do
-    case :unicode.characters_to_binary(k, encoding) do
-      {:error, _, _} ->
-        decode_until_valid!(k, encodings)
+  defp value_typemap([h | _]), do: %{t: {:list, type_of(h)}}
+  defp value_typemap(v) when is_map(v), do: %{t: :map, fields: to_typemap(v)}
+  defp value_typemap(v), do: %{t: type_of(v)}
 
-      k ->
-        k
-        |> Unicode.unaccent()
-        |> String.to_atom()
-    end
-  end
+  # Keys are kept as binaries in the user-input branch: production keys come
+  # from JSON or OTEL protobuf and are already valid UTF-8, so the previous
+  # `String.valid?/1` + `String.to_atom/1` pair was wasted work on the
+  # LogEvent.make/2 hot path. Dropping `String.to_atom` also closes a memory
+  # leak vector (unbounded atoms from user input).
+  defp normalize_key(k) when is_binary(k), do: k
+  defp normalize_key(k) when is_atom(k), do: Atom.to_string(k)
+  defp normalize_key(k), do: to_string(k)
 
   def not_empty_container?(value)
       when value == []
